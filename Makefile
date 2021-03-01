@@ -1,7 +1,7 @@
 .PHONY: milkchess
 milkchess:
-	clang -O3 -Wall -Werror -ansi -o milkchess $(wildcard src/*.c)
+	clang++ -O3 -Wall -Werror -o milkchess $(wildcard src/*.cpp)
 
 .PHONY: format
 format:
-	clang-format -i src/*.c src/*.h
+	clang-format -i src/*.cpp src/*.hpp
