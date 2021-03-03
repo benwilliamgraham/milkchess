@@ -25,6 +25,7 @@ struct Move {
   Piece *piece;
   Piece *captured;
   Piece::Type promotion_type;
+  Piece *last_pawn_adv2;
   Move(Piece *piece, uint8_t x, uint8_t y, Piece *captured = nullptr,
        Piece::Type promotion_type = Piece::NONE)
       : x1(piece->x), y1(piece->y), x2(x), y2(y), had_moved(piece->has_moved),
@@ -41,12 +42,12 @@ struct Player {
 class Game {
 public:
   enum State { IN_PLAY, BLACK_WIN, WHITE_WIN, DRAW };
-  Piece *board[BOARD_SIZE][BOARD_SIZE];
+  Piece *board[BOARD_SIZE][BOARD_SIZE], *last_pawn_adv2 = nullptr;
   Player black, white;
   Player *active, *opponent;
   Game();
   // determines if the piece can be taken in a move
-  bool is_threatened(Piece *piece);
+  bool is_check(Player *player);
   // get all possible moves for the active player, ordered best->worst
   std::vector<Move> get_moves();
   // apply a move, returning true if successful
@@ -56,7 +57,7 @@ public:
   // check the state of the game
   State get_state();
   // rate the current state for a given player
-  int rate_state();
+  int rate_state(Player *player);
   // suggest the best move along with it's rating
   std::tuple<Move, int> suggest_move();
   // test the chess engine

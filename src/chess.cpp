@@ -1,4 +1,5 @@
 #include "chess.hpp"
+#include <cstdlib>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -70,33 +71,32 @@ struct _Delta {
             {-1, -1},
 };
 
-bool Game::is_threatened(Piece *piece) {
+bool Game::is_check(Player *player) {
   // check for pawns
-  uint8_t y = piece->y + (piece->color == BLACK ? 1 : -1);
-  uint8_t x = piece->x - 1;
+  uint8_t y = player->king->y + (player->color == BLACK ? 1 : -1);
+  uint8_t x = player->king->x - 1;
   if (x < BOARD_SIZE && y < BOARD_SIZE) {
     Piece *attacker = board[y][x];
-    if (attacker && attacker->color != piece->color &&
+    if (attacker && attacker->color != player->color &&
         attacker->type == Piece::PAWN) {
       return true;
     }
   }
-  x = piece->x + 1;
+  x = player->king->x + 1;
   if (x < BOARD_SIZE && y < BOARD_SIZE) {
     Piece *attacker = board[y][x];
-    if (attacker && attacker->color != piece->color &&
+    if (attacker && attacker->color != player->color &&
         attacker->type == Piece::PAWN) {
       return true;
     }
   }
-  // TODO: en passant
   // check for knights
   for (_Delta delta : _KNIGHT_DELTAS) {
-    x = piece->x + delta.x;
-    y = piece->y + delta.y;
+    x = player->king->x + delta.x;
+    y = player->king->y + delta.y;
     if (x < BOARD_SIZE && y < BOARD_SIZE) {
       Piece *attacker = board[y][x];
-      if (attacker && attacker->color != piece->color &&
+      if (attacker && attacker->color != player->color &&
           attacker->type == Piece::KNIGHT) {
         return true;
       }
@@ -104,11 +104,11 @@ bool Game::is_threatened(Piece *piece) {
   }
   // check for other king
   for (_Delta delta : _KING_DELTAS) {
-    x = piece->x + delta.x;
-    y = piece->y + delta.y;
+    x = player->king->x + delta.x;
+    y = player->king->y + delta.y;
     if (x < BOARD_SIZE && y < BOARD_SIZE) {
       Piece *attacker = board[y][x];
-      if (attacker && attacker->color != piece->color &&
+      if (attacker && attacker->color != player->color &&
           attacker->type == Piece::KING) {
         return true;
       }
@@ -117,14 +117,14 @@ bool Game::is_threatened(Piece *piece) {
   // check for horizontal/vertical pieces
   for (_Delta delta : _HORZ_VERT_DETLAS) {
     for (uint8_t d = 1;; d++) {
-      x = piece->x + d * delta.x;
-      y = piece->y + d * delta.y;
+      x = player->king->x + d * delta.x;
+      y = player->king->y + d * delta.y;
       if (x >= BOARD_SIZE || y >= BOARD_SIZE) {
         break;
       }
       Piece *attacker = board[y][x];
       if (attacker) {
-        if (attacker->color != piece->color &&
+        if (attacker->color != player->color &&
             (attacker->type == Piece::ROOK || attacker->type == Piece::QUEEN)) {
           return true;
         }
@@ -134,14 +134,14 @@ bool Game::is_threatened(Piece *piece) {
   }
   for (_Delta delta : _DIAGONAL_DELTAS) {
     for (uint8_t d = 1;; d++) {
-      x = piece->x + d * delta.x;
-      y = piece->y + d * delta.y;
+      x = player->king->x + d * delta.x;
+      y = player->king->y + d * delta.y;
       if (x >= BOARD_SIZE || y >= BOARD_SIZE) {
         break;
       }
       Piece *attacker = board[y][x];
       if (attacker) {
-        if (attacker->color != piece->color &&
+        if (attacker->color != player->color &&
             (attacker->type == Piece::BISHOP ||
              attacker->type == Piece::QUEEN)) {
           return true;
@@ -195,7 +195,12 @@ std::vector<Move> Game::get_moves() {
           good_moves.push_back(Move(&piece, x, y, board[y][x], promotion_type));
         }
       }
-      // TODO: en passant
+      // en passant
+      if (last_pawn_adv2 && last_pawn_adv2->y == piece.y &&
+          std::abs((int)last_pawn_adv2->x - piece.x) == 1) {
+        good_moves.push_back(
+            Move(&piece, last_pawn_adv2->x, y, last_pawn_adv2));
+      }
     }
     // knight movement
     else if (piece.type == Piece::KNIGHT) {
@@ -225,7 +230,7 @@ std::vector<Move> Game::get_moves() {
         }
       }
       // check for castling
-      if (!piece.has_moved && !is_threatened(&piece)) {
+      if (!piece.has_moved && !is_check(active)) {
         uint8_t y = piece.y;
         if (board[y][0] && !board[y][0]->has_moved && !board[y][1] &&
             !board[y][2] && !board[y][3]) {
@@ -313,9 +318,20 @@ bool Game::make_move(Move &move) {
   if (move.promotion_type) {
     move.piece->type = move.promotion_type;
   }
-  // TODO: en passant
+  // en passant setup
+  move.last_pawn_adv2 = last_pawn_adv2;
+  if (move.piece->type == Piece::PAWN &&
+      std::abs((int)move.y1 - move.y2) == 2) {
+    last_pawn_adv2 = move.piece;
+  } else {
+    last_pawn_adv2 = nullptr;
+  }
+  // en passant capture
+  if (move.captured && move.y2 != move.captured->y) {
+    board[move.captured->y][move.captured->x] = nullptr;
+  }
   // make sure player isn't put in check
-  if (is_threatened(active->king)) {
+  if (is_check(active)) {
     undo_move(move);
     return false;
   }
@@ -328,7 +344,12 @@ void Game::undo_move(Move &move) {
     move.captured->is_live = true;
   }
   board[move.y1][move.x1] = move.piece;
-  board[move.y2][move.x2] = move.captured;
+  if (move.captured) {
+    board[move.y2][move.x2] = nullptr;
+    board[move.captured->y][move.captured->x] = move.captured;
+  } else {
+    board[move.y2][move.x2] = nullptr;
+  }
   move.piece->x = move.x1;
   move.piece->y = move.y1;
   move.piece->has_moved = move.had_moved;
@@ -351,7 +372,8 @@ void Game::undo_move(Move &move) {
   if (move.promotion_type) {
     move.piece->type = Piece::PAWN;
   }
-  // TODO: en passant
+  // en passant setup
+  last_pawn_adv2 = move.last_pawn_adv2;
 }
 
 Game::State Game::get_state() {
@@ -362,17 +384,17 @@ Game::State Game::get_state() {
     }
     undo_move(move);
   }
-  if (is_threatened(active->king)) {
+  if (is_check(active)) {
     return active->color == BLACK ? WHITE_WIN : BLACK_WIN;
   } else {
     return DRAW;
   }
 }
 
-int Game::rate_state() {
+int Game::rate_state(Player *player) {
   int rating = 0, multiplier = 1;
-  Player *rating_player = active;
-  Player *other_player = opponent;
+  Player *rating_player = player == active ? active : opponent;
+  Player *other_player = player == active ? opponent : active;
 
 weigh_player:
   // weigh peices
@@ -385,7 +407,7 @@ weigh_player:
     // weigh proximity to king
     uint8_t dist = abs((int)other_player->king->x - piece.x) +
                    abs((int)other_player->king->y - piece.y);
-    rating += multiplier * (16 - dist) * 2;
+    rating += multiplier * (16 - dist);
   }
   // weigh if king is in corner
   if ((other_player->king->x == 0 || other_player->king->x == 7) &&
@@ -394,8 +416,7 @@ weigh_player:
   }
   // swap to other side and rate again
   if (rating_player == active) {
-    rating_player = opponent;
-    other_player = active;
+    std::swap(rating_player, other_player);
     multiplier = -1;
     goto weigh_player;
   }
@@ -404,21 +425,23 @@ weigh_player:
 }
 
 // perform aplha-beta pruning to find the best move
-int _alpha_beta(Game &game, unsigned depth, int a, int b, bool maximizing, bool last_capture = false) {
+int _alpha_beta(Game &game, unsigned depth, int a, int b, Player *maximizing,
+                bool last_capture = false) {
   // if is a terminal node
-  if ((!last_capture && depth == 2) || depth == 0) {
-    return game.rate_state();
+  if (depth == 0) {
+    return game.rate_state(maximizing);
   }
   // attempt to search, testing for end states if not successful
   bool move_found = false;
   int rating;
-  if (maximizing) {
+  if (game.active == maximizing) {
     rating = -INT_MAX;
     for (Move &move : game.get_moves()) {
       if (game.make_move(move)) {
         move_found = true;
         std::swap(game.active, game.opponent);
-        rating = std::max(rating, _alpha_beta(game, depth - 1, a, b, false, move.captured));
+        rating = std::max(rating, _alpha_beta(game, depth - 1, a, b, maximizing,
+                                              move.captured));
         std::swap(game.active, game.opponent);
         a = std::max(a, rating);
         game.undo_move(move);
@@ -434,7 +457,8 @@ int _alpha_beta(Game &game, unsigned depth, int a, int b, bool maximizing, bool 
       if (game.make_move(move)) {
         move_found = true;
         std::swap(game.active, game.opponent);
-        rating = std::min(rating, _alpha_beta(game, depth - 1, a, b, true, move.captured));
+        rating = std::min(rating, _alpha_beta(game, depth - 1, a, b, maximizing,
+                                              move.captured));
         std::swap(game.active, game.opponent);
         b = std::min(b, rating);
         game.undo_move(move);
@@ -445,7 +469,7 @@ int _alpha_beta(Game &game, unsigned depth, int a, int b, bool maximizing, bool 
     }
   }
   // check for draw
-  if (!move_found && !game.is_threatened(game.active->king)) {
+  if (!move_found && !game.is_check(game.active)) {
     return 0;
   }
   return rating;
@@ -458,8 +482,8 @@ std::tuple<Move, int> Game::suggest_move() {
   for (Move &move : moves) {
     if (make_move(move)) {
       std::swap(active, opponent);
-      int rating = _alpha_beta(*this, 6, -INT_MAX, INT_MAX, false);
-      if (rating > best_rating) {
+      int rating = _alpha_beta(*this, 5, -INT_MAX, INT_MAX, opponent);
+      if (rating > best_rating || (rating == best_rating && rand() % 2)) {
         best_rating = rating;
         best_move = &move;
       }
@@ -503,7 +527,7 @@ void _test_poses(Game &game, std::vector<unsigned> expected_poses) {
 
 void Game::test() {
   printf("Testing from start:\n");
-  _test_poses(*this, {20, 400, 8902, 197281, 4865906, 119060324});
+  _test_poses(*this, {20, 400, 8902, 197281, 4865609, 119060324});
   printf("Testing from position 5:\n");
   black.pieces[4].x = 5;
   black.pieces[4].has_moved = true;

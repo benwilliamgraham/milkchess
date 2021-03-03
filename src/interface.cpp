@@ -12,6 +12,17 @@ int main(int argc, char **argv) {
     return 0;
   }
 
+  // get player's color
+get_color:
+  printf("Enter team (`b` or `w`): ");
+  char color_input;
+  if (scanf(" %c", &color_input) != 1 ||
+      (color_input != 'b' && color_input != 'w')) {
+    printf("Invalid color\n");
+    goto get_color;
+  }
+  Player *player = color_input == 'b' ? &game.black : &game.white;
+
   // game loop
   for (;;) {
     // draw board
@@ -51,23 +62,11 @@ int main(int argc, char **argv) {
 
     // get recommendations
     std::tuple<Move, int> best_move_tpl = game.suggest_move();
-    Move best_move = std::get<0>(best_move_tpl);
-    int rating = std::get<1>(best_move_tpl);
-    printf("AI suggests: %c%d to %c%d", best_move.x1 + 'a',
-           BOARD_SIZE - best_move.y1, best_move.x2 + 'a',
-           BOARD_SIZE - best_move.y2);
-    if (best_move.promotion_type) {
-      const char *promotion_types[] = {"knight", "bishop", "rook", "queen"};
-      printf("(%s)", promotion_types[best_move.promotion_type + 1]);
+    if (game.active != player) {
+      game.make_move(std::get<0>(best_move_tpl));
+      std::swap(game.active, game.opponent);
+      continue;
     }
-    printf("; rating: %d, current: %d\n", rating, game.rate_state());
-
-    // TEMP AUTO MODE:
-    printf("Press any button to continue...");
-    getchar();
-    game.make_move(best_move);
-    std::swap(game.active, game.opponent);
-    continue;
 
     // get move
   get_move:;
@@ -123,21 +122,20 @@ int main(int argc, char **argv) {
       printf("Invalid piece selected\n");
       goto get_move;
     }
-    Move move(piece, x2, y2, game.board[y2][x2], promotion_type);
-    for (Move &pos_move : game.get_moves()) {
-      if (move.piece == pos_move.piece && move.x2 == pos_move.x2 &&
-          move.y2 == pos_move.y2) {
+    for (Move &move : game.get_moves()) {
+      if (piece == move.piece && x2 == move.x2 && y2 == move.y2 &&
+          promotion_type == move.promotion_type) {
+        if (!game.make_move(move)) {
+          printf("Invalid move: resulted in check\n");
+          goto get_move;
+        }
         goto found;
       }
     }
     printf("Invalid move: invalid target square\n");
     goto get_move;
   found:
-    if (!game.make_move(move)) {
-      printf("Invalid move: resulted in check\n");
-      goto get_move;
-    }
-
+    // switch turns and start over
     std::swap(game.active, game.opponent);
   }
 }
