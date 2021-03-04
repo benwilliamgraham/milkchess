@@ -4,6 +4,28 @@
 
 using namespace milkchess;
 
+void draw_board(Game &game) {
+  // draw board
+  printf("\033[2J\033[H  \033[4ma b c d e f g h\033[0m\n");
+  for (uint8_t y = 0; y < BOARD_SIZE; y++) {
+    printf("%d|", BOARD_SIZE - y);
+    for (uint8_t x = 0; x < BOARD_SIZE; x++) {
+      Piece *piece = game.board[y][x];
+      if (piece) {
+        const char *symbols[] = {
+            "♙", "♘", "♗", "♖", "♕", "♔", "♟︎", "♞", "♝", "♜", "♛", "♚",
+        };
+        printf("%s ",
+               symbols[(piece->type - 1) + (piece->color == BLACK ? 0 : 6)]);
+      } else {
+        printf("%s ", (x + y) % 2 ? "·" : "•");
+      }
+    }
+    printf("\n");
+  }
+  printf("\n");
+}
+
 int main(int argc, char **argv) {
   Game game;
 
@@ -24,26 +46,8 @@ get_color:
   Player *player = color_input == 'b' ? &game.black : &game.white;
 
   // game loop
+  draw_board(game);
   for (;;) {
-    // draw board
-    printf("\033[2J\033[H  \033[4ma b c d e f g h\033[0m\n");
-    for (uint8_t y = 0; y < BOARD_SIZE; y++) {
-      printf("%d|", BOARD_SIZE - y);
-      for (uint8_t x = 0; x < BOARD_SIZE; x++) {
-        Piece *piece = game.board[y][x];
-        if (piece) {
-          const char *symbols[] = {
-              "♙", "♘", "♗", "♖", "♕", "♔", "♟︎", "♞", "♝", "♜", "♛", "♚",
-          };
-          printf("%s ",
-                 symbols[(piece->type - 1) + (piece->color == BLACK ? 0 : 6)]);
-        } else {
-          printf("%s ", (x + y) % 2 ? "·" : "•");
-        }
-      }
-      printf("\n");
-    }
-    printf("\n");
 
     // update status if necessary
     switch (game.get_state()) {
@@ -61,9 +65,14 @@ get_color:
     }
 
     // get recommendations
-    std::tuple<Move, int> best_move_tpl = game.suggest_move();
     if (game.active != player) {
-      game.make_move(std::get<0>(best_move_tpl));
+      Suggestion suggestion = game.suggest_move();
+      game.make_move(suggestion.move);
+      draw_board(game);
+      printf("AI's move: %c%d to %c%d (rating: %d; depth: %u)\n",
+             'a' + suggestion.move.x1, BOARD_SIZE - suggestion.move.y1,
+             'a' + suggestion.move.x2, BOARD_SIZE - suggestion.move.y2,
+             suggestion.rating, suggestion.depth);
       std::swap(game.active, game.opponent);
       continue;
     }
@@ -71,8 +80,7 @@ get_color:
     // get move
   get_move:;
     uint8_t x1, y1, x2, y2;
-    printf("\033[1m%s's move: \033[0m",
-           game.active->color == BLACK ? "Black" : "White");
+    printf("\033[1mYour move: \033[0m");
     if (scanf(" %c%c to %c%c", &x1, &y1, &x2, &y2) != 4) {
       printf("\rInvalid move; expected form `xy to xy`\n");
       goto get_move;
@@ -137,5 +145,6 @@ get_color:
   found:
     // switch turns and start over
     std::swap(game.active, game.opponent);
+    draw_board(game);
   }
 }

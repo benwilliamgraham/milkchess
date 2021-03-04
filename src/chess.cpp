@@ -1,9 +1,10 @@
 #include "chess.hpp"
+#include <chrono>
 #include <cstdlib>
 #include <limits.h>
+#include <list>
 #include <stdio.h>
 #include <stdlib.h>
-#include <tuple>
 
 using namespace milkchess;
 
@@ -393,34 +394,28 @@ Game::State Game::get_state() {
 
 int Game::rate_state(Player *player) {
   int rating = 0, multiplier = 1;
-  Player *rating_player = player == active ? active : opponent;
+  Player *rating_player = player;
   Player *other_player = player == active ? opponent : active;
-
 weigh_player:
   // weigh peices
   for (Piece &piece : rating_player->pieces) {
     if (piece.is_live) {
       // add weight
-      int piece_ratings[] = {100, 300, 300, 500, 900};
-      rating += multiplier * piece_ratings[piece.type - 1];
+      int piece_ratings[] = {1, 3, 3, 5, 9, 0};
+      int piece_rating = piece_ratings[piece.type - 1];
+      rating += multiplier * piece_rating * 4;
+      // weigh proximity to king
+      uint8_t dist = abs((int)other_player->king->x - piece.x) +
+                     abs((int)other_player->king->y - piece.y);
+      rating += multiplier * ((16 - dist) >> 2) * piece_rating;
     }
-    // weigh proximity to king
-    uint8_t dist = abs((int)other_player->king->x - piece.x) +
-                   abs((int)other_player->king->y - piece.y);
-    rating += multiplier * (16 - dist);
-  }
-  // weigh if king is in corner
-  if ((other_player->king->x == 0 || other_player->king->x == 7) &&
-      (other_player->king->y == 0 || other_player->king->y == 7)) {
-    rating += multiplier * 80;
   }
   // swap to other side and rate again
-  if (rating_player == active) {
+  if (rating_player == player) {
     std::swap(rating_player, other_player);
     multiplier = -1;
     goto weigh_player;
   }
-
   return rating;
 }
 
@@ -475,23 +470,54 @@ int _alpha_beta(Game &game, unsigned depth, int a, int b, Player *maximizing,
   return rating;
 }
 
-std::tuple<Move, int> Game::suggest_move() {
-  Move *best_move;
-  int best_rating = -INT_MAX;
+// given two rated moves, return the best
+struct RatedMove {
+  Move &move;
+  int rating;
+};
+
+bool _best_rated_move(RatedMove a, RatedMove b) { return a.rating > b.rating; }
+
+Suggestion Game::suggest_move(unsigned time_ms) {
+  // initially start with no rating
   std::vector<Move> moves = get_moves();
+  std::list<RatedMove> rated_moves;
   for (Move &move : moves) {
     if (make_move(move)) {
-      std::swap(active, opponent);
-      int rating = _alpha_beta(*this, 5, -INT_MAX, INT_MAX, opponent);
-      if (rating > best_rating || (rating == best_rating && rand() % 2)) {
-        best_rating = rating;
-        best_move = &move;
-      }
-      std::swap(active, opponent);
+      rated_moves.push_back({move, 0});
       undo_move(move);
     }
   }
-  return std::tuple<Move, int>(*best_move, best_rating);
+  // start timer
+  auto start = std::chrono::high_resolution_clock::now();
+  // continue iterating until timer is out
+  unsigned depth = 2;
+  for (;; depth++) {
+    int current_best = -INT_MAX;
+    for (RatedMove &rated_move : rated_moves) {
+      make_move(rated_move.move);
+      std::swap(active, opponent);
+      int rating = _alpha_beta(*this, depth, current_best, INT_MAX, opponent);
+      rated_move.rating = rating;
+      current_best = std::max(current_best, rating);
+      std::swap(active, opponent);
+      undo_move(rated_move.move);
+      if (std::chrono::duration_cast<std::chrono::milliseconds>(
+              std::chrono::high_resolution_clock::now() - start)
+              .count() > time_ms) {
+        goto time_up;
+      }
+    }
+    // sort moves by quality and either return best or start over
+    rated_moves.sort(_best_rated_move);
+  }
+time_up:
+  rated_moves.sort(_best_rated_move);
+  return {
+      .move = rated_moves.front().move,
+      .rating = rated_moves.front().rating,
+      .depth = depth,
+  };
 }
 
 // get the number of positions at a given depth, for testing purposes

@@ -39,6 +39,12 @@ struct Player {
   Player() : pieces(NUM_PIECES_PER_SIDE) {}
 };
 
+struct Suggestion {
+  Move move;
+  int rating;
+  unsigned depth;
+};
+
 class Game {
 public:
   enum State { IN_PLAY, BLACK_WIN, WHITE_WIN, DRAW };
@@ -59,7 +65,7 @@ public:
   // rate the current state for a given player
   int rate_state(Player *player);
   // suggest the best move along with it's rating
-  std::tuple<Move, int> suggest_move();
+  Suggestion suggest_move(unsigned time_ms = 5000);
   // test the chess engine
   void test();
 };
