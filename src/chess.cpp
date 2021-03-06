@@ -403,7 +403,7 @@ weigh_player:
       // add weight
       int piece_ratings[] = {1, 3, 3, 5, 9, 0};
       int piece_rating = piece_ratings[piece.type - 1];
-      rating += multiplier * piece_rating * 4;
+      rating += multiplier * piece_rating * 10;
       // weigh proximity to king
       uint8_t dist = abs((int)other_player->king->x - piece.x) +
                      abs((int)other_player->king->y - piece.y);
@@ -420,8 +420,7 @@ weigh_player:
 }
 
 // perform aplha-beta pruning to find the best move
-int _alpha_beta(Game &game, unsigned depth, int a, int b, Player *maximizing,
-                bool last_capture = false) {
+int _alpha_beta(Game &game, unsigned depth, int a, int b, Player *maximizing) {
   // if is a terminal node
   if (depth == 0) {
     return game.rate_state(maximizing);
@@ -435,8 +434,8 @@ int _alpha_beta(Game &game, unsigned depth, int a, int b, Player *maximizing,
       if (game.make_move(move)) {
         move_found = true;
         std::swap(game.active, game.opponent);
-        rating = std::max(rating, _alpha_beta(game, depth - 1, a, b, maximizing,
-                                              move.captured));
+        rating =
+            std::max(rating, _alpha_beta(game, depth - 1, a, b, maximizing));
         std::swap(game.active, game.opponent);
         a = std::max(a, rating);
         game.undo_move(move);
@@ -452,8 +451,8 @@ int _alpha_beta(Game &game, unsigned depth, int a, int b, Player *maximizing,
       if (game.make_move(move)) {
         move_found = true;
         std::swap(game.active, game.opponent);
-        rating = std::min(rating, _alpha_beta(game, depth - 1, a, b, maximizing,
-                                              move.captured));
+        rating =
+            std::min(rating, _alpha_beta(game, depth - 1, a, b, maximizing));
         std::swap(game.active, game.opponent);
         b = std::min(b, rating);
         game.undo_move(move);
@@ -493,13 +492,11 @@ Suggestion Game::suggest_move(unsigned time_ms) {
   // continue iterating until timer is out
   unsigned depth = 2;
   for (;; depth++) {
-    int current_best = -INT_MAX;
     for (RatedMove &rated_move : rated_moves) {
       make_move(rated_move.move);
       std::swap(active, opponent);
-      int rating = _alpha_beta(*this, depth, current_best, INT_MAX, opponent);
+      int rating = _alpha_beta(*this, depth, -INT_MAX, INT_MAX, opponent);
       rated_move.rating = rating;
-      current_best = std::max(current_best, rating);
       std::swap(active, opponent);
       undo_move(rated_move.move);
       if (std::chrono::duration_cast<std::chrono::milliseconds>(
