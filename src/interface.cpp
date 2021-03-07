@@ -31,6 +31,7 @@ void draw_board(Game &game, Player *player) {
 
 int main(int argc, char **argv) {
   Game game;
+  Player *player = &game.white;
 
   if (argc > 1 && !strcmp("test", argv[1])) {
     game.test();
@@ -46,19 +47,17 @@ get_color:
     printf("Invalid color\n");
     goto get_color;
   }
-  Player *player = color_input == 'b' ? &game.black : &game.white;
+  Player *human = color_input == 'b' ? &game.black : &game.white;
+  Player *ai = human == &game.black ? &game.white : &game.black;
 
   // game loop
-  draw_board(game, player);
+  draw_board(game, human);
   for (;;) {
 
     // update status if necessary
-    switch (game.get_state()) {
-    case Game::BLACK_WIN:
-      printf("Black wins!\n");
-      return 0;
-    case Game::WHITE_WIN:
-      printf("White wins!\n");
+    switch (game.get_state(player)) {
+    case Game::LOSS:
+      printf("%s wins!\n", player == &game.black ? "White" : "Black");
       return 0;
     case Game::DRAW:
       printf("Draw!\n");
@@ -68,15 +67,15 @@ get_color:
     }
 
     // get recommendations
-    if (game.active != player) {
-      Suggestion suggestion = game.suggest_move();
+    if (player != human) {
+      Suggestion suggestion = game.suggest_move(ai, 10000);
       game.make_move(suggestion.move);
-      draw_board(game, player);
-      printf("AI's move: %c%d to %c%d (rating: %d; depth: %u)\n",
+      draw_board(game, human);
+      printf("AI's move: %c%d to %c%d (rating: %lf%%; depth: %u)\n",
              'a' + suggestion.move.x1, BOARD_SIZE - suggestion.move.y1,
              'a' + suggestion.move.x2, BOARD_SIZE - suggestion.move.y2,
-             suggestion.rating, suggestion.depth);
-      std::swap(game.active, game.opponent);
+             suggestion.rating * 100, suggestion.depth);
+      player = human;
       continue;
     }
 
@@ -129,11 +128,11 @@ get_color:
 
     // ensure that move is reachable
     Piece *piece = game.board[y1][x1];
-    if (!piece || piece->color != game.active->color) {
+    if (!piece || piece->color != human->color) {
       printf("Invalid piece selected\n");
       goto get_move;
     }
-    for (Move &move : game.get_moves()) {
+    for (Move &move : game.get_moves(human)) {
       if (piece == move.piece && x2 == move.x2 && y2 == move.y2 &&
           promotion_type == move.promotion_type) {
         if (!game.make_move(move)) {
@@ -147,7 +146,7 @@ get_color:
     goto get_move;
   found:
     // switch turns and start over
-    std::swap(game.active, game.opponent);
-    draw_board(game, player);
+    draw_board(game, human);
+    player = ai;
   }
 }

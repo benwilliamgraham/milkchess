@@ -1,8 +1,8 @@
 #include "chess.hpp"
 #include <chrono>
 #include <cstdlib>
-#include <limits.h>
 #include <list>
+#include <set>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -43,8 +43,6 @@ Game::Game() {
     board[black_y][x] = &black.pieces[i];
     board[white_y][x] = &white.pieces[i];
   }
-  active = &white;
-  opponent = &black;
 }
 
 struct _Delta {
@@ -154,10 +152,10 @@ bool Game::is_check(Player *player) {
   return false;
 }
 
-std::vector<Move> Game::get_moves() {
+std::vector<Move> Game::get_moves(Player *player) {
   std::vector<Move> good_moves;
   std::vector<Move> bad_moves;
-  for (Piece &piece : active->pieces) {
+  for (Piece &piece : player->pieces) {
     if (!piece.is_live) {
       continue;
     }
@@ -187,12 +185,12 @@ std::vector<Move> Game::get_moves() {
         // piece taking
         x = piece.x - 1;
         if (x < BOARD_SIZE && board[y][x] &&
-            board[y][x]->color == opponent->color) {
+            board[y][x]->color != player->color) {
           good_moves.push_back(Move(&piece, x, y, board[y][x], promotion_type));
         }
         x = piece.x + 1;
         if (x < BOARD_SIZE && board[y][x] &&
-            board[y][x]->color == opponent->color) {
+            board[y][x]->color != player->color) {
           good_moves.push_back(Move(&piece, x, y, board[y][x], promotion_type));
         }
       }
@@ -211,7 +209,7 @@ std::vector<Move> Game::get_moves() {
         if (x < BOARD_SIZE && y < BOARD_SIZE) {
           if (!board[y][x]) {
             bad_moves.push_back(Move(&piece, x, y));
-          } else if (board[y][x]->color == opponent->color) {
+          } else if (board[y][x]->color != player->color) {
             good_moves.push_back(Move(&piece, x, y, board[y][x]));
           }
         }
@@ -225,13 +223,13 @@ std::vector<Move> Game::get_moves() {
         if (x < BOARD_SIZE && y < BOARD_SIZE) {
           if (!board[y][x]) {
             bad_moves.push_back(Move(&piece, x, y));
-          } else if (board[y][x]->color == opponent->color) {
+          } else if (board[y][x]->color != player->color) {
             good_moves.push_back(Move(&piece, x, y, board[y][x]));
           }
         }
       }
       // check for castling
-      if (!piece.has_moved && !is_check(active)) {
+      if (!piece.has_moved && !is_check(player)) {
         uint8_t y = piece.y;
         if (board[y][0] && !board[y][0]->has_moved && !board[y][1] &&
             !board[y][2] && !board[y][3]) {
@@ -254,7 +252,7 @@ std::vector<Move> Game::get_moves() {
             }
             Piece *target = board[y][x];
             if (target) {
-              if (target->color == opponent->color) {
+              if (target->color != player->color) {
                 good_moves.push_back(Move(&piece, x, y, target));
               }
               break;
@@ -274,7 +272,7 @@ std::vector<Move> Game::get_moves() {
             }
             Piece *target = board[y][x];
             if (target) {
-              if (target->color == opponent->color) {
+              if (target->color != player->color) {
                 good_moves.push_back(Move(&piece, x, y, target));
               }
               break;
@@ -332,7 +330,7 @@ bool Game::make_move(Move &move) {
     board[move.captured->y][move.captured->x] = nullptr;
   }
   // make sure player isn't put in check
-  if (is_check(active)) {
+  if (is_check(move.piece->color == BLACK ? &black : &white)) {
     undo_move(move);
     return false;
   }
@@ -377,83 +375,128 @@ void Game::undo_move(Move &move) {
   last_pawn_adv2 = move.last_pawn_adv2;
 }
 
-Game::State Game::get_state() {
-  for (Move &move : get_moves()) {
+Game::State Game::get_state(Player *player) {
+  for (Move &move : get_moves(player)) {
     if (make_move(move)) {
       undo_move(move);
       return IN_PLAY;
     }
     undo_move(move);
   }
-  if (is_check(active)) {
-    return active->color == BLACK ? WHITE_WIN : BLACK_WIN;
+  if (is_check(player)) {
+    return LOSS;
   } else {
     return DRAW;
   }
 }
 
-int Game::rate_state(Player *player) {
-  int rating = 0, multiplier = 1;
-  Player *rating_player = player;
-  Player *other_player = player == active ? opponent : active;
-weigh_player:
-  // weigh peices
-  for (Piece &piece : rating_player->pieces) {
-    if (piece.is_live) {
-      // add weight
-      int piece_ratings[] = {1, 3, 3, 5, 9, 0};
-      int piece_rating = piece_ratings[piece.type - 1];
-      rating += multiplier * piece_rating * 10;
-      // weigh proximity to king
-      uint8_t dist = abs((int)other_player->king->x - piece.x) +
-                     abs((int)other_player->king->y - piece.y);
-      rating += multiplier * ((16 - dist) >> 2) * piece_rating;
+// create a hashed version of the board for set lookup
+struct _HashBoard {
+  unsigned squares[BOARD_SIZE * BOARD_SIZE / 2];
+};
+
+bool operator<(const _HashBoard &lhs, const _HashBoard &rhs) {
+  for (uint8_t i = 0; i < BOARD_SIZE * BOARD_SIZE / 2; i++) {
+    if (lhs.squares[i] < rhs.squares[i]) {
+      return true;
+    } else if (lhs.squares[i] > rhs.squares[i]) {
+      return false;
     }
   }
-  // swap to other side and rate again
-  if (rating_player == player) {
-    std::swap(rating_player, other_player);
-    multiplier = -1;
-    goto weigh_player;
+  return false;
+}
+
+bool operator==(const _HashBoard &lhs, const _HashBoard &rhs) {
+  for (uint8_t i = 0; i < BOARD_SIZE * BOARD_SIZE / 2; i++) {
+    if (lhs.squares[i] != rhs.squares[i]) {
+      return false;
+    }
   }
-  return rating;
+  return true;
+}
+
+_HashBoard _hash_board(Game &game) {
+  _HashBoard board;
+  for (uint8_t y = 0; y < BOARD_SIZE; y++) {
+    for (uint8_t x = 0; x < BOARD_SIZE; x++) {
+      Piece *piece = game.board[y][x];
+      unsigned value = 0;
+      if (piece) {
+          value =
+          piece->type | (piece->color == BLACK ? 0b10000000 : 0);
+      }
+      if (x % 2 == 1) {
+        board.squares[(y * BOARD_SIZE + x) / 2] |= value << 4;
+      } else {
+        board.squares[(y * BOARD_SIZE + x) / 2] = value;
+      }
+    }
+  }
+  return board;
 }
 
 // perform aplha-beta pruning to find the best move
-int _alpha_beta(Game &game, unsigned depth, int a, int b, Player *maximizing) {
+double _alpha_beta(Game &game, unsigned depth, double a, double b, Player *max,
+                   Player *min, bool is_max,
+                   std::set<_HashBoard> &hash_boards, bool last_capture=false) {
   // if is a terminal node
   if (depth == 0) {
-    return game.rate_state(maximizing);
+    int max_score = 0, min_score = 0;
+    int piece_ratings[] = {0, 1, 3, 3, 5, 9, 1};
+    for (Piece &piece : max->pieces) {
+      if (piece.is_live) {
+        max_score += piece_ratings[piece.type] * 8;
+      }
+    }
+    for (Piece &piece : min->pieces) {
+      if (piece.is_live) {
+        min_score += piece_ratings[piece.type] * 8;
+      }
+    }
+    return (double)max_score / (double)(max_score + min_score);
   }
   // attempt to search, testing for end states if not successful
   bool move_found = false;
-  int rating;
-  if (game.active == maximizing) {
-    rating = -INT_MAX;
-    for (Move &move : game.get_moves()) {
+  double rating;
+  if (is_max) {
+    rating = 0;
+    for (Move &move : game.get_moves(max)) {
       if (game.make_move(move)) {
+        _HashBoard hashed_board = _hash_board(game);
+        if (hash_boards.find(hashed_board) != hash_boards.end()) {
+          game.undo_move(move);
+          continue;
+        } else {
+          hash_boards.insert(hashed_board);
+        }
         move_found = true;
-        std::swap(game.active, game.opponent);
-        rating =
-            std::max(rating, _alpha_beta(game, depth - 1, a, b, maximizing));
-        std::swap(game.active, game.opponent);
+        unsigned next_depth = depth == 1 && last_capture ? 1 : depth - 1;
+        rating = std::max(rating, _alpha_beta(game, depth - 1, a, b, max, min,
+                                              false, hash_boards, move.captured));
         a = std::max(a, rating);
         game.undo_move(move);
         if (a >= b) {
           break;
         }
       }
+      if (!move_found && !game.is_check(max)) {
+        return 0.5;
+      }
     }
-    return rating;
   } else {
-    rating = INT_MAX;
-    for (Move &move : game.get_moves()) {
+    rating = 1;
+    for (Move &move : game.get_moves(min)) {
       if (game.make_move(move)) {
+        _HashBoard hashed_board = _hash_board(game);
+        if (hash_boards.find(hashed_board) != hash_boards.end()) {
+          game.undo_move(move);
+          continue;
+        } else {
+          hash_boards.insert(hashed_board);
+        }
         move_found = true;
-        std::swap(game.active, game.opponent);
-        rating =
-            std::min(rating, _alpha_beta(game, depth - 1, a, b, maximizing));
-        std::swap(game.active, game.opponent);
+        rating = std::min(rating, _alpha_beta(game, depth - 1, a, b, max, min,
+                                              true, hash_boards, move.captured));
         b = std::min(b, rating);
         game.undo_move(move);
         if (b <= a) {
@@ -461,10 +504,9 @@ int _alpha_beta(Game &game, unsigned depth, int a, int b, Player *maximizing) {
         }
       }
     }
-  }
-  // check for draw
-  if (!move_found && !game.is_check(game.active)) {
-    return 0;
+    if (!move_found && !game.is_check(min)) {
+      return 0.5;
+    }
   }
   return rating;
 }
@@ -472,14 +514,14 @@ int _alpha_beta(Game &game, unsigned depth, int a, int b, Player *maximizing) {
 // given two rated moves, return the best
 struct RatedMove {
   Move &move;
-  int rating;
+  double rating;
 };
 
 bool _best_rated_move(RatedMove a, RatedMove b) { return a.rating > b.rating; }
 
-Suggestion Game::suggest_move(unsigned time_ms) {
+Suggestion Game::suggest_move(Player *player, unsigned time_ms) {
   // initially start with no rating
-  std::vector<Move> moves = get_moves();
+  std::vector<Move> moves = get_moves(player);
   std::list<RatedMove> rated_moves;
   for (Move &move : moves) {
     if (make_move(move)) {
@@ -492,12 +534,14 @@ Suggestion Game::suggest_move(unsigned time_ms) {
   // continue iterating until timer is out
   unsigned depth = 2;
   for (;; depth++) {
+    std::set<_HashBoard> hash_boards;
     for (RatedMove &rated_move : rated_moves) {
       make_move(rated_move.move);
-      std::swap(active, opponent);
-      int rating = _alpha_beta(*this, depth, -INT_MAX, INT_MAX, opponent);
+      hash_boards.insert(_hash_board(*this));
+      double rating =
+          _alpha_beta(*this, depth, 0, 1, player,
+                      player == &black ? &white : &black, false, hash_boards);
       rated_move.rating = rating;
-      std::swap(active, opponent);
       undo_move(rated_move.move);
       if (std::chrono::duration_cast<std::chrono::milliseconds>(
               std::chrono::high_resolution_clock::now() - start)
@@ -507,6 +551,8 @@ Suggestion Game::suggest_move(unsigned time_ms) {
     }
     // sort moves by quality and either return best or start over
     rated_moves.sort(_best_rated_move);
+    printf("Search depth %u completed, best score: %lf\n", depth,
+           rated_moves.front().rating);
   }
 time_up:
   rated_moves.sort(_best_rated_move);
@@ -518,14 +564,13 @@ time_up:
 }
 
 // get the number of positions at a given depth, for testing purposes
-unsigned _get_poses(Game &game, uint8_t depth) {
+unsigned _get_poses(Game &game, Player *player, uint8_t depth) {
   unsigned num_moves = 0;
-  for (Move &move : game.get_moves()) {
+  for (Move &move : game.get_moves(player)) {
     if (game.make_move(move)) {
       if (depth > 1) {
-        std::swap(game.active, game.opponent);
-        num_moves += _get_poses(game, depth - 1);
-        std::swap(game.active, game.opponent);
+        num_moves += _get_poses(
+            game, player == &game.black ? &game.white : &game.black, depth - 1);
       } else {
         num_moves++;
       }
@@ -539,7 +584,7 @@ unsigned _get_poses(Game &game, uint8_t depth) {
 void _test_poses(Game &game, std::vector<unsigned> expected_poses) {
   for (uint8_t i = 0; i < expected_poses.size(); i++) {
     printf("Testing depth %d ...\n", i + 1);
-    unsigned poses = _get_poses(game, i + 1);
+    unsigned poses = _get_poses(game, &game.white, i + 1);
     if (poses == expected_poses[i]) {
       printf("Correct!\n");
     } else {

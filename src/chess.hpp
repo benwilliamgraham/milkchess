@@ -41,31 +41,28 @@ struct Player {
 
 struct Suggestion {
   Move move;
-  int rating;
+  double rating;
   unsigned depth;
 };
 
 class Game {
 public:
-  enum State { IN_PLAY, BLACK_WIN, WHITE_WIN, DRAW };
+  enum State { IN_PLAY, LOSS, DRAW };
   Piece *board[BOARD_SIZE][BOARD_SIZE], *last_pawn_adv2 = nullptr;
   Player black, white;
-  Player *active, *opponent;
   Game();
   // determines if the piece can be taken in a move
   bool is_check(Player *player);
   // get all possible moves for the active player, ordered best->worst
-  std::vector<Move> get_moves();
+  std::vector<Move> get_moves(Player *player);
   // apply a move, returning true if successful
   bool make_move(Move &move);
   // undo a move
   void undo_move(Move &move);
-  // check the state of the game
-  State get_state();
-  // rate the current state for a given player
-  int rate_state(Player *player);
+  // check the state of the game for a given player
+  State get_state(Player *player);
   // suggest the best move along with it's rating
-  Suggestion suggest_move(unsigned time_ms = 5000);
+  Suggestion suggest_move(Player *player, unsigned time_ms);
   // test the chess engine
   void test();
 };
