@@ -1,8 +1,9 @@
 #include <stdint.h>
 #include <tuple>
 #include <vector>
+#pragma once
 
-namespace milkchess {
+namespace chess {
 
 #define BOARD_SIZE 8
 #define NUM_PIECES_PER_SIDE 16
@@ -17,6 +18,31 @@ struct Piece {
   uint8_t x, y;
   bool is_live = true;
   bool has_moved = false;
+};
+
+struct Delta {
+  int8_t x, y;
+} const KNIGHT_DELTAS[] =
+    {
+        {2, 1}, {2, -1}, {-2, 1}, {-2, -1}, {1, 2}, {1, -2}, {-1, 2}, {-1, -2},
+},
+        KING_DELTAS[] =
+            {
+                {1, 1}, {1, -1}, {-1, 1}, {-1, -1},
+                {0, 1}, {0, -1}, {-1, 0}, {1, 0},
+},
+        HORZ_VERT_DETLAS[] =
+            {
+                {0, 1},
+                {0, -1},
+                {1, 0},
+                {-1, 0},
+},
+        DIAGONAL_DELTAS[] = {
+            {1, 1},
+            {1, -1},
+            {-1, 1},
+            {-1, -1},
 };
 
 struct Move {
@@ -39,12 +65,6 @@ struct Player {
   Player() : pieces(NUM_PIECES_PER_SIDE) {}
 };
 
-struct Suggestion {
-  Move move;
-  double rating;
-  unsigned depth;
-};
-
 class Game {
 public:
   enum State { IN_PLAY, LOSS, DRAW };
@@ -53,7 +73,7 @@ public:
   Game();
   // determines if the piece can be taken in a move
   bool is_check(Player *player);
-  // get all possible moves for the active player, ordered best->worst
+  // get all possible moves for the active player
   std::vector<Move> get_moves(Player *player);
   // apply a move, returning true if successful
   bool make_move(Move &move);
@@ -61,10 +81,8 @@ public:
   void undo_move(Move &move);
   // check the state of the game for a given player
   State get_state(Player *player);
-  // suggest the best move along with it's rating
-  Suggestion suggest_move(Player *player, unsigned time_ms);
   // test the chess engine
   void test();
 };
 
-} // namespace milkchess
+} // namespace chess

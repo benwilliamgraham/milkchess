@@ -1,8 +1,10 @@
+#include "ai.hpp"
 #include "chess.hpp"
 #include <stdio.h>
 #include <string.h>
 
-using namespace milkchess;
+using namespace chess;
+using namespace ai;
 
 void draw_board(Game &game, Player *player) {
   // draw board
@@ -68,13 +70,11 @@ get_color:
 
     // get recommendations
     if (player != human) {
-      Suggestion suggestion = game.suggest_move(ai, 10000);
-      game.make_move(suggestion.move);
+      Move move = best_move(game, ai);
+      game.make_move(move);
       draw_board(game, human);
-      printf("AI's move: %c%d to %c%d (rating: %lf%%; depth: %u)\n",
-             'a' + suggestion.move.x1, BOARD_SIZE - suggestion.move.y1,
-             'a' + suggestion.move.x2, BOARD_SIZE - suggestion.move.y2,
-             suggestion.rating * 100, suggestion.depth);
+      printf("AI's move: %c%d to %c%d\n", 'a' + move.x1, BOARD_SIZE - move.y1,
+             'a' + move.x2, BOARD_SIZE - move.y2);
       player = human;
       continue;
     }
