@@ -28,7 +28,7 @@ struct _HashBoard {
         Piece *piece = game.board[y][x];
         unsigned value = 0;
         if (piece) {
-          value = piece->type | (piece->color == BLACK ? 0b10000000 : 0);
+          value = piece->type | (piece->color == BLACK ? 0b1000 : 0);
         }
         if (x % 2 == 1) {
           squares[(y * BOARD_SIZE + x) / 2] |= value << 4;
@@ -40,10 +40,13 @@ struct _HashBoard {
   }
 
   bool operator<(const _HashBoard &rhs) const {
-    for (uint8_t i = 0; i < BOARD_SIZE * BOARD_SIZE / 2; i++) {
-      if (squares[i] < rhs.squares[i]) {
+    uint64_t *lhs_squares = (uint64_t *)squares;
+    uint64_t *rhs_squares = (uint64_t *)rhs.squares;
+    for (uint8_t i = 0; i < BOARD_SIZE * BOARD_SIZE / 2 / sizeof(uint64_t);
+         i++) {
+      if (lhs_squares[i] < rhs_squares[i]) {
         return true;
-      } else if (squares[i] > rhs.squares[i]) {
+      } else if (lhs_squares[i] > rhs_squares[i]) {
         return false;
       }
     }
@@ -51,12 +54,11 @@ struct _HashBoard {
   }
 
   bool operator==(const _HashBoard &rhs) {
-    for (uint8_t i = 0; i < BOARD_SIZE * BOARD_SIZE / 2; i++) {
-      if (squares[i] != rhs.squares[i]) {
-        return false;
-      }
-    }
-    return true;
+    uint64_t *lhs_squares = (uint64_t *)squares;
+    uint64_t *rhs_squares = (uint64_t *)rhs.squares;
+    return lhs_squares[0] == rhs_squares[0] &&
+           lhs_squares[1] == rhs_squares[1] &&
+           lhs_squares[2] == rhs_squares[2] && lhs_squares[3] == rhs_squares[3];
   }
 };
 
@@ -73,24 +75,16 @@ int _rate_player(Game &game, Player *player) {
   for (Piece &piece : player->pieces) {
     if (piece.is_live) {
       unsigned piece_multipliers[] = {0, 1, 3, 3, 5, 9, 0};
-      unsigned square_multipliers[] = {4, 4, 5, 6, 6, 5, 4, 4};
-      unsigned piece_multiplier = piece_multipliers[piece.type];
-      score += 64 * piece_multiplier * square_multipliers[piece.y] *
-               square_multipliers[piece.x];
+      score += 100 * piece_multipliers[piece.type];
+      int square_bonus[] = {9, 9, 12, 18, 18, 12, 9, 9};
       if (piece.type == Piece::PAWN) {
-        if (piece.x == 0 || piece.x == 7) {
-          score +=
-              piece_multiplier * square_multipliers[x] * square_multipliers[y];
-        } else {
-          score += 2 * piece_multiplier * square_multipliers[x] *
-                   square_multipliers[y];
-        }
+        score += 3 * (square_bonus[piece.x] + square_bonus[piece.y]);
       } else if (piece.type == Piece::KNIGHT) {
+        score += square_bonus[piece.x] + square_bonus[piece.y];
         for (Delta delta : KNIGHT_DELTAS) {
           x = piece.x + delta.x, y = piece.y + delta.y;
           if (x < BOARD_SIZE && y < BOARD_SIZE) {
-            score += piece_multiplier * square_multipliers[x] *
-                     square_multipliers[y];
+            score += square_bonus[x] + square_bonus[y];
           }
         }
       } else {
@@ -101,8 +95,7 @@ int _rate_player(Game &game, Player *player) {
               if (x >= BOARD_SIZE || y >= BOARD_SIZE) {
                 break;
               }
-              score += piece_multiplier * square_multipliers[x] *
-                       square_multipliers[y];
+              score += square_bonus[x] + square_bonus[y];
               if (game.board[y][x]) {
                 break;
               }
@@ -115,8 +108,7 @@ int _rate_player(Game &game, Player *player) {
               if (x >= BOARD_SIZE || y >= BOARD_SIZE) {
                 break;
               }
-              score += piece_multiplier * square_multipliers[x] *
-                       square_multipliers[y];
+              score += square_bonus[x] + square_bonus[y];
               if (game.board[y][x]) {
                 break;
               }
@@ -130,7 +122,8 @@ int _rate_player(Game &game, Player *player) {
 }
 
 int _negamax(Game &game, Player *max, Player *min, unsigned depth, int a, int b,
-             int8_t color, std::map<_HashBoard, _Entry> trans_table) {
+             int8_t color, std::map<_HashBoard, _Entry> trans_table,
+             bool last_capture = false) {
   int a_orig = a;
 
   // check if the state has already been reached
@@ -150,7 +143,7 @@ int _negamax(Game &game, Player *max, Player *min, unsigned depth, int a, int b,
   }
 
   // if the node is terminal
-  if (depth == 0) {
+  if ((depth <= 2 && !last_capture) || depth == 0) {
     return (_rate_player(game, max) - _rate_player(game, min)) * color;
   }
 
@@ -168,8 +161,9 @@ int _negamax(Game &game, Player *max, Player *min, unsigned depth, int a, int b,
   int rating = -INT_MAX;
   for (_RatedMove &rated_move : rated_moves) {
     if (game.make_move(rated_move.move)) {
-      rating = std::max(rating, -_negamax(game, min, max, depth - 1, -b, -a,
-                                          -color, trans_table));
+      rating =
+          std::max(rating, -_negamax(game, min, max, depth - 1, -b, -a, -color,
+                                     trans_table, rated_move.move.captured));
       a = std::max(a, rating);
       game.undo_move(rated_move.move);
       if (a >= b) {
@@ -178,7 +172,7 @@ int _negamax(Game &game, Player *max, Player *min, unsigned depth, int a, int b,
     }
   }
   // check for draw
-  if (!rated_moves.size()) {
+  if (!rated_moves.size() && game.get_state(max) != chess::Game::LOSS) {
     rating = 0;
   }
 
@@ -197,7 +191,7 @@ int _negamax(Game &game, Player *max, Player *min, unsigned depth, int a, int b,
   return rating;
 }
 
-Move ai::best_move(Game &game, Player *player) {
+MoveChoice ai::best_move(Game &game, Player *player) {
   Player *max = player;
   Player *min = player == &game.black ? &game.white : &game.black;
   std::vector<Move> moves = game.get_moves(max);
@@ -210,24 +204,36 @@ Move ai::best_move(Game &game, Player *player) {
       game.undo_move(move);
     }
   }
-  for (unsigned depth = 4; depth <= 5; depth++) {
-    rated_moves.sort(_RatedMove::best_move);
-    int rating = -INT_MAX;
-    std::map<_HashBoard, _Entry> trans_table;
-    for (_RatedMove &rated_move : rated_moves) {
-      if (game.make_move(rated_move.move)) {
-        int res = -_negamax(game, min, max, depth, -INT_MAX, -rating, -1,
-                            trans_table);
-        // short-circuit checkmate
-        if (res == INT_MAX) {
-          return rated_move.move;
-        }
-        rated_move.rating = res;
-        rating = std::max(rating, res);
-        game.undo_move(rated_move.move);
-      }
+  rated_moves.sort(_RatedMove::best_move);
+  int rating = -INT_MAX;
+  std::map<_HashBoard, _Entry> trans_table;
+  // use the number of pieces to determine the search depth
+  unsigned num_pieces = 0;
+  for (Piece &piece : max->pieces) {
+    if (piece.is_live) {
+      num_pieces++;
+    }
+  }
+  for (Piece &piece : min->pieces) {
+    if (piece.is_live) {
+      num_pieces++;
+    }
+  }
+  unsigned depth = num_pieces > 14 ? 7 : (num_pieces > 8 ? 9 : 11);
+  printf("Searching to depth %u(+2 for capture)\n", depth - 2);
+  for (_RatedMove &rated_move : rated_moves) {
+    if (game.make_move(rated_move.move)) {
+      int res =
+          -_negamax(game, min, max, 7, -INT_MAX, -rating, -1, trans_table);
+      rated_move.rating = res;
+      rating = std::max(rating, res);
+      game.undo_move(rated_move.move);
     }
   }
   rated_moves.sort(_RatedMove::best_move);
-  return rated_moves.front().move;
+  return {
+      .move = rated_moves.front().move,
+      .current_rating = _rate_player(game, max) - _rate_player(game, min),
+      .target_rating = rated_moves.front().rating,
+  };
 }

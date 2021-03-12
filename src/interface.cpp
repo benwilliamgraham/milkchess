@@ -2,6 +2,7 @@
 #include "chess.hpp"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 using namespace chess;
 using namespace ai;
@@ -70,11 +71,14 @@ get_color:
 
     // get recommendations
     if (player != human) {
-      Move move = best_move(game, ai);
+      MoveChoice move_choice = best_move(game, ai);
+      Move move = move_choice.move;
       game.make_move(move);
       draw_board(game, human);
-      printf("AI's move: %c%d to %c%d\n", 'a' + move.x1, BOARD_SIZE - move.y1,
-             'a' + move.x2, BOARD_SIZE - move.y2);
+      printf("AI's move: %c%d to %c%d (%d.%d -> %d.%d)\n", 'a' + move.x1,
+             BOARD_SIZE - move.y1, 'a' + move.x2, BOARD_SIZE - move.y2,
+             move_choice.current_rating / 100, std::abs(move_choice.current_rating % 100),
+             move_choice.target_rating / 100, std::abs(move_choice.target_rating % 100));
       player = human;
       continue;
     }
