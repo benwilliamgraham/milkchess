@@ -76,7 +76,7 @@ int _rate_player(Game &game, Player *player) {
     if (piece.is_live) {
       unsigned piece_multipliers[] = {0, 1, 3, 3, 5, 9, 0};
       score += 100 * piece_multipliers[piece.type];
-      int square_bonus[] = {9, 9, 12, 18, 18, 12, 9, 9};
+      int square_bonus[] = {2, 2, 3, 6, 6, 3, 2, 2};
       if (piece.type == Piece::PAWN) {
         score += 3 * (square_bonus[piece.x] + square_bonus[piece.y]);
       } else if (piece.type == Piece::KNIGHT) {
@@ -84,10 +84,15 @@ int _rate_player(Game &game, Player *player) {
         for (Delta delta : KNIGHT_DELTAS) {
           x = piece.x + delta.x, y = piece.y + delta.y;
           if (x < BOARD_SIZE && y < BOARD_SIZE) {
-            score += square_bonus[x] + square_bonus[y];
+            if (game.board[y][x] && game.board[y][x]->color != player->color) {
+              score += 10 * piece_multipliers[game.board[y][x]->type];
+            } else {
+              score += square_bonus[x] + square_bonus[y];
+            }
           }
         }
       } else {
+        unsigned capture_multiplier = piece.type == Piece::QUEEN ? 4 : 8;
         if (piece.type == Piece::BISHOP || piece.type == Piece::QUEEN) {
           for (Delta delta : DIAGONAL_DELTAS) {
             for (unsigned d = 1;; d++) {
@@ -97,11 +102,16 @@ int _rate_player(Game &game, Player *player) {
               }
               score += square_bonus[x] + square_bonus[y];
               if (game.board[y][x]) {
+                if (game.board[y][x]->color != player->color) {
+                  score += capture_multiplier *
+                           piece_multipliers[game.board[y][x]->type];
+                }
                 break;
               }
             }
           }
-        } else if (piece.type == Piece::ROOK || piece.type == Piece::QUEEN) {
+        }
+        if (piece.type == Piece::ROOK || piece.type == Piece::QUEEN) {
           for (Delta delta : HORZ_VERT_DETLAS) {
             for (unsigned d = 1;; d++) {
               x = piece.x + delta.x * d, y = piece.y + delta.y * d;
@@ -110,6 +120,10 @@ int _rate_player(Game &game, Player *player) {
               }
               score += square_bonus[x] + square_bonus[y];
               if (game.board[y][x]) {
+                if (game.board[y][x]->color != player->color) {
+                  score += capture_multiplier *
+                           piece_multipliers[game.board[y][x]->type];
+                }
                 break;
               }
             }
