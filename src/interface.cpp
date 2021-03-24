@@ -40,6 +40,7 @@ int main(int argc, char **argv) {
     game.test();
     return 0;
   }
+  bool bongcloud = argc > 1 && !strcmp("bongcloud", argv[1]);
 
   // get player's color
 get_color:
@@ -55,6 +56,7 @@ get_color:
 
   // game loop
   draw_board(game, human);
+  unsigned ai_move_counter = 0;
   for (;;) {
 
     // update status if necessary
@@ -71,6 +73,20 @@ get_color:
 
     // get recommendations
     if (player != human) {
+      ai_move_counter++;
+      if (bongcloud && ai_move_counter <= 2) {
+        Move move =
+            player->color == chess::BLACK
+                ? (ai_move_counter == 1 ? Move(&player->pieces[12], 4, 3)
+                                        : Move(player->king, 4, 1))
+                : (ai_move_counter == 1 ? Move(&player->pieces[12], 4, 4)
+                                        : Move(player->king, 4, 6));
+        if (game.make_move(move)) {
+          draw_board(game, human);
+          player = human;
+          continue;
+        }
+      }
       MoveChoice move_choice = best_move(game, ai);
       Move move = move_choice.move;
       game.make_move(move);
