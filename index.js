@@ -1,4 +1,4 @@
-import init, { greet } from "./pkg/milkchess.js";
+import init, { get_legal_moves, get_best_move, get_state } from "./pkg/milkchess.js";
 
 const gameDiv = document.getElementById("game");
 let divWidth = window.innerWidth;
@@ -7,11 +7,16 @@ let divHeight = window.innerHeight;
 const board = [];
 
 class Piece {
-    constructor(color, type, x, y) {
+    constructor(color, type, x, y, has_moved) {
         this.color = color;
         this.type = type;
+        this.has_moved = has_moved;
         this.x = x;
         this.y = y;
+    }
+
+    get src() {
+        return `./assets/${this.color}_${this.type}.svg`;
     }
 }
 
@@ -68,7 +73,7 @@ function redraw() {
                 continue;
             }
             let pieceImg = document.createElement("img");
-            pieceImg.src = "./assets/" + piece.color + "_" + piece.type + ".svg";
+            pieceImg.src = piece.src;
             pieceImg.style.width = boardHeight / 8 + "px";
             pieceImg.style.height = boardHeight / 8 + "px";
             pieceImg.style.position = "absolute";
