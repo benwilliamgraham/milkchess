@@ -1,39 +1,42 @@
+use std::convert::TryFrom;
+
 pub enum GameState {
     Playing,
-    BlackWin,
-    WhiteWin,
+    Check(Color), // the color of the player who is in check
+    Checkmate(Color), // the color of the player who was checkmated
+    Stalemate,
 }
 
+#[derive(PartialEq)]
 pub enum Color {
     Black = 0,
     White = 1,
 }
 
 pub enum Type {
-    Pawn = 0,
-    Rook = 1,
-    Knight = 2,
-    Bishop = 3,
-    Queen = 4,
-    King = 5,
+    Pawn = 1,
+    Rook = 2,
+    Knight = 3,
+    Bishop = 4,
+    Queen = 5,
+    King = 6,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct Piece {
     data: u8,
 }
 
 // pieces are serialized as u8
-// 0b11111111 for empty
-// 0b000MCTTT where M is if the piece has moved, C is color, T is type
+// 0 for empty
+// 0bCTTT where C is color and T is type
 impl Piece {
-    pub const EMPTY: Piece = Piece { data: 0b11111111 };
+    pub const EMPTY: Piece = Piece { data: 0 };
 
-    pub fn new(color: Color, type_: Type, has_moved: bool) -> Piece {
+    pub fn new(color: Color, type_: Type) -> Piece {
         let mut data = 0;
         data |= color as u8;
         data |= (type_ as u8) << 3;
-        data |= (has_moved as u8) << 4;
         Piece { data }
     }
 
@@ -48,29 +51,33 @@ impl Piece {
     pub fn type_(&self) -> Type {
         let data = self.data & 0b00000111;
         match data {
-            0 => Type::Pawn,
-            1 => Type::Rook,
-            2 => Type::Knight,
-            3 => Type::Bishop,
-            4 => Type::Queen,
-            5 => Type::King,
+            data if data == Type::Pawn as u8 => Type::Pawn,
+            data if data == Type::Rook as u8 => Type::Rook,
+            data if data == Type::Knight as u8 => Type::Knight,
+            data if data == Type::Bishop as u8 => Type::Bishop,
+            data if data == Type::Queen as u8 => Type::Queen,
+            data if data == Type::King as u8 => Type::King,
             _ => panic!("Invalid piece type"),
         }
     }
-
-    pub fn has_moved(&self) -> bool {
-        self.data & 0b00010000 != 0
-    }
 }
 
-pub type Board = [[Piece; 8]; 8];
+pub struct Board {
+    pub squares : [[Piece; 8]; 8],
+    pub can_castle_black_queenside : bool,
+    pub can_castle_black_kingside : bool,
+    pub can_castle_white_queenside : bool,
+    pub can_castle_white_kingside : bool,
+    pub can_en_passant : Option<u8>,
+    pub turn : Color,
+}
 
-pub fn get_legal_moves(board: Board, turn: Color) -> Vec<Board> {
+pub fn get_legal_moves(board: Board) -> Vec<Board> {
     let mut legal_moves = Vec::new();
     legal_moves
 }
 
-pub fn get_best_move(board: Board, turn: Color) -> Board {
+pub fn get_best_move(board: Board) -> Board {
     board
 }
 
