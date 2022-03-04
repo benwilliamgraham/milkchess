@@ -91,15 +91,6 @@ impl Serialize for chess::Board {
     }
 }
 
-impl Serialize for Vec<chess::Board> {
-    fn serialize(&self) -> String {
-        self.iter()
-            .map(|board| board.serialize())
-            .collect::<Vec<String>>()
-            .join("\n")
-    }
-}
-
 impl Serialize for chess::GameState {
     fn serialize(&self) -> String {
         match self {
@@ -114,16 +105,32 @@ impl Serialize for chess::GameState {
 }
 
 #[wasm_bindgen]
-pub fn get_legal_moves(board: &str) -> String {
-    chess::get_legal_moves(chess::Board::deserialize(board)).serialize()
+pub fn get_legal_actions(board: &str) -> String {
+    let mut board = chess::Board::deserialize(board);
+    chess::get_legal_actions(&board)
+        .iter()
+        .map(|action| {
+            board.apply_action(action);
+            let s = board.serialize();
+            board.undo_action(action);
+            s
+        })
+        .collect::<Vec<String>>()
+        .join("\n")
 }
 
 #[wasm_bindgen]
 pub fn get_best_move(board: &str) -> String {
-    chess::get_best_move(chess::Board::deserialize(board)).serialize()
+    let mut board = chess::Board::deserialize(board);
+    let action = chess::get_best_move(&board);
+    board.apply_action(&action);
+    let s = board.serialize();
+    board.undo_action(&action);
+    s
 }
 
 #[wasm_bindgen]
 pub fn get_state(board: &str) -> String {
-    chess::get_state(chess::Board::deserialize(board)).serialize()
+    let board = chess::Board::deserialize(board);
+    chess::get_state(&board).serialize()
 }

@@ -84,6 +84,7 @@ const board = new class {
             white: { queenSide: true, kingSide: true },
         };
         this.can_en_passant = false;
+        this.turn = Color.White;
 
         this.reset();
     }
@@ -104,7 +105,7 @@ const board = new class {
             "........" +
             "PPPPPPPP" +
             "RNBQKBNR" +
-            "ttttf"
+            "ttttfw"
         );
     }
 
@@ -165,6 +166,7 @@ const board = new class {
         } else {
             serialized += "f";
         }
+        serialized += this.turn == Color.Black ? "b" : "w";
         return serialized;
     }
 
@@ -195,11 +197,12 @@ const board = new class {
                 i++;
             }
         }
-        if (serialized[i] === "f") {
+        if (serialized[i++] === "f") {
             this.can_en_passant = false;
         } else {
             this.can_en_passant = parseInt(serialized[i]);
         }
+        this.turn = serialized[i] === "b" ? Color.Black : Color.White;
     }
 }
 
