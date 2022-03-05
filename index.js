@@ -1,4 +1,4 @@
-import init, { get_legal_moves, get_best_move, get_state } from "./pkg/milkchess.js";
+import init, { get_legal_actions, get_best_move, get_state } from "./pkg/milkchess.js";
 
 const gameDiv = document.getElementById("game");
 let divWidth = window.innerWidth;
@@ -68,6 +68,8 @@ class Piece {
             };
             pieceImg.style.top = square.y * size + "px";
             pieceImg.style.left = square.x * size + "px";
+            console.log(board.serialize());
+            console.log(get_legal_actions(board.serialize()));
             return false;
         };
         pieceImg.drag = false;
