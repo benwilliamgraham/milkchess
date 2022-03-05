@@ -1,19 +1,27 @@
 use wasm_bindgen::prelude::*;
 
+extern crate console_error_panic_hook;
+use std::panic;
+
+mod ai;
 mod chess;
 
-pub trait Deserialize {
+trait Deserialize {
     fn deserialize(s: &str) -> Self;
 }
 
 impl Deserialize for chess::Board {
     fn deserialize(s: &str) -> Self {
+        panic::set_hook(Box::new(console_error_panic_hook::hook));
         let mut chars = s.chars();
 
         let mut squares = [[chess::Piece::EMPTY; 8]; 8];
         for y in 0..8 {
             for x in 0..8 {
-                let c: char = chars.next().unwrap();
+                let c = chars.next().unwrap();
+                if c == '.' {
+                    continue;
+                }
                 let color = if 'a' <= c && c <= 'z' {
                     chess::Color::Black
                 } else {
@@ -27,7 +35,7 @@ impl Deserialize for chess::Board {
                     'b' => chess::Type::Bishop,
                     'q' => chess::Type::Queen,
                     'k' => chess::Type::King,
-                    _ => panic!("Invalid piece type"),
+                    _ => panic!("Invalid piece type: {}", c),
                 };
                 squares[y][x] = chess::Piece::new(color, type_);
             }
@@ -35,11 +43,13 @@ impl Deserialize for chess::Board {
 
         let castle_statuses: Vec<bool> = (0..4).map(|_| chars.next().unwrap() == 't').collect();
 
-        let can_en_passant: Option<u8> = if chars.next().unwrap() == 'f' {
+        let can_en_passant_char = chars.next().unwrap();
+        let can_en_passant: Option<u8> = if can_en_passant_char == 'f' {
             None
         } else {
-            Some(chars.next().unwrap() as u8 - '0' as u8)
+            Some(can_en_passant_char as u8 - '0' as u8)
         };
+
         let turn: chess::Color = if chars.next().unwrap() == 'b' {
             chess::Color::Black
         } else {
@@ -57,7 +67,7 @@ impl Deserialize for chess::Board {
     }
 }
 
-pub trait Serialize {
+trait Serialize {
     fn serialize(&self) -> String;
 }
 
@@ -87,42 +97,52 @@ impl Serialize for chess::Board {
                 }
             }
         }
-        s
-    }
-}
-
-impl Serialize for chess::GameState {
-    fn serialize(&self) -> String {
-        match self {
-            chess::GameState::Playing => "Playing".to_string(),
-            chess::GameState::Check(chess::Color::Black) => format!("CheckBlack"),
-            chess::GameState::Check(chess::Color::White) => format!("CheckWhite"),
-            chess::GameState::Checkmate(chess::Color::Black) => format!("CheckmateBlack"),
-            chess::GameState::Checkmate(chess::Color::White) => format!("CheckmateWhite"),
-            chess::GameState::Stalemate => "Stalemate".to_string(),
+        for &castle in &[
+            self.can_castle_black_queenside,
+            self.can_castle_black_kingside,
+            self.can_castle_white_queenside,
+            self.can_castle_white_kingside,
+        ] {
+            if castle {
+                s.push('t');
+            } else {
+                s.push('f');
+            }
         }
+        if let Some(can_en_passant) = self.can_en_passant {
+            s.push((can_en_passant + '0' as u8) as char);
+        } else {
+            s.push('f');
+        }
+        if self.turn == chess::Color::Black {
+            s.push('b');
+        } else {
+            s.push('w');
+        }
+        s
     }
 }
 
 #[wasm_bindgen]
 pub fn get_legal_actions(board: &str) -> String {
     let mut board = chess::Board::deserialize(board);
-    chess::get_legal_actions(&board)
-        .iter()
-        .map(|action| {
-            board.apply_action(action);
-            let s = board.serialize();
-            board.undo_action(action);
-            s
-        })
-        .collect::<Vec<String>>()
-        .join("\n")
+    board.serialize()
+    // board.get_legal_actions()
+    //     .iter()
+    //     .map(|action| {
+    //         board.apply_action(action);
+    //         let s = board.serialize();
+    //         board.undo_action(action);
+    //         s
+    //     })
+    //     .collect::<Vec<String>>()
+    //     .join("\n")
 }
 
 #[wasm_bindgen]
 pub fn get_best_move(board: &str) -> String {
     let mut board = chess::Board::deserialize(board);
-    let action = chess::get_best_move(&board);
+    let action = ai::get_best_move(&mut board);
     board.apply_action(&action);
     let s = board.serialize();
     board.undo_action(&action);
@@ -131,6 +151,5 @@ pub fn get_best_move(board: &str) -> String {
 
 #[wasm_bindgen]
 pub fn get_state(board: &str) -> String {
-    let board = chess::Board::deserialize(board);
-    chess::get_state(&board).serialize()
+    "Hye".to_string()
 }

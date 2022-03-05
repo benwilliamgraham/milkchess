@@ -1,12 +1,3 @@
-use std::convert::TryFrom;
-
-pub enum GameState {
-    Playing,
-    Check(Color),     // the color of the player who is in check
-    Checkmate(Color), // the color of the player who was checkmated
-    Stalemate,
-}
-
 #[derive(PartialEq)]
 pub enum Color {
     Black = 0,
@@ -35,8 +26,8 @@ impl Piece {
 
     pub fn new(color: Color, type_: Type) -> Piece {
         let mut data = 0;
-        data |= color as u8;
-        data |= (type_ as u8) << 3;
+        data |= (color as u8) << 3;
+        data |= (type_ as u8) & 0b00000111;
         Piece { data }
     }
 
@@ -57,7 +48,7 @@ impl Piece {
             data if data == Type::Bishop as u8 => Type::Bishop,
             data if data == Type::Queen as u8 => Type::Queen,
             data if data == Type::King as u8 => Type::King,
-            _ => panic!("Invalid piece type"),
+            _ => panic!("Invalid piece type: {}", data),
         }
     }
 }
@@ -153,7 +144,6 @@ impl Board {
                 let from = promotion.from;
                 let to = promotion.to;
                 let promoted = promotion.promoted;
-                let piece = self.squares[from.1 as usize][from.0 as usize];
                 self.squares[to.1 as usize][to.0 as usize] = promoted;
                 self.squares[from.1 as usize][from.0 as usize] = Piece::EMPTY;
             }
@@ -207,7 +197,7 @@ impl Board {
                 self.squares[to.1 as usize][to.0 as usize] = Piece::EMPTY;
                 self.squares[rook_from.1 as usize][rook_from.0 as usize] = rook;
                 self.squares[rook_to.1 as usize][rook_to.0 as usize] = Piece::EMPTY;
-            },
+            }
             Action::Promotion(promotion) => {
                 let from = promotion.from;
                 let to = promotion.to;
@@ -219,57 +209,83 @@ impl Board {
         }
     }
 
-    fn is_check(&self) -> bool {
+    pub fn is_check(&self) -> bool {
         false
     }
 
-    fn is_checkmate(&self) -> bool {
+    pub fn is_checkmate(&self) -> bool {
         false
     }
-}
 
-pub fn get_legal_actions(board: &Board) -> Vec<Action> {
-    let mut legal_moves = Vec::new();
-    for y in 0..8 {
-        for x in 0..8 {
-            let piece = board.squares[y][x];
-            if piece == Piece::EMPTY || piece.color() != board.turn {
-                continue;
-            }
+    pub fn is_stalemate(&self) -> bool {
+        false
+    }
 
-            fn add_diagonal_moves() {}
+    pub fn get_legal_actions(&self) -> Vec<Action> {
+        let mut legal_moves = Vec::new();
+        for y in 0..8 {
+            for x in 0..8 {
+                let piece = self.squares[y][x];
+                if piece == Piece::EMPTY || piece.color() != self.turn {
+                    continue;
+                }
 
-            fn add_horiz_vert_moves() {}
+                fn add_diagonal_moves() {}
 
-            match piece.type_() {
-                Type::Pawn => {
-                    let dir: i8 = if piece.color() == Color::Black { 1 } else { -1 };
+                fn add_horiz_vert_moves() {}
+
+                match piece.type_() {
+                    Type::Pawn => {
+                        let has_moved = piece.color() == Color::Black && y != 1
+                            || piece.color() == Color::White && y != 6;
+                        // check one square forward
+                        let forw_1 = if piece.color() == Color::Black {
+                            y + 1
+                        } else {
+                            y - 1
+                        };
+                        if self.squares[forw_1][x] == Piece::EMPTY {
+                            legal_moves.push(Action::Move(Move {
+                                from: (x as u8, y as u8),
+                                to: (x as u8, forw_1 as u8),
+                            }));
+                            // check two squares forward
+                            let forw_2 = if piece.color() == Color::Black {
+                                y + 2
+                            } else {
+                                y - 2
+                            };
+                            if !has_moved && self.squares[forw_2][x] == Piece::EMPTY {
+                                legal_moves.push(Action::Move(Move {
+                                    from: (x as u8, y as u8),
+                                    to: (x as u8, forw_2 as u8),
+                                }));
+                            }
+                        }
+                        // check diagonal capture
+                        // TODO: check for diagonal capture
+
+                        // check en passant
+                        // TODO: check for en passant
+                        
+                        // check promotion
+                        // TODO: check for promotion
+                    }
+                    Type::Knight => {}
+                    Type::Bishop => {
+                        add_diagonal_moves();
+                    }
+                    Type::Rook => {
+                        add_horiz_vert_moves();
+                    }
+                    Type::Queen => {
+                        add_diagonal_moves();
+                        add_horiz_vert_moves();
+                    }
+                    Type::King => {}
                 }
-                Type::Knight => {}
-                Type::Bishop => {
-                    add_diagonal_moves();
-                }
-                Type::Rook => {
-                    add_horiz_vert_moves();
-                }
-                Type::Queen => {
-                    add_diagonal_moves();
-                    add_horiz_vert_moves();
-                }
-                Type::King => {}
             }
         }
+        legal_moves
     }
-    legal_moves
-}
-
-pub fn get_best_move(board: &Board) -> Action {
-    Action::Move(Move {
-        from: (0, 0),
-        to: (0, 0),
-    })
-}
-
-pub fn get_state(board: &Board) -> GameState {
-    GameState::Playing
 }
