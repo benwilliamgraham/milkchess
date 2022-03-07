@@ -109,31 +109,27 @@ pub struct Board {
 impl Board {
     pub fn apply_action(&mut self, action: &Action) {
         match action {
-            Action::Move(move_) => {
-                let from = move_.from;
-                let to = move_.to;
+            Action::Move(Move { from, to }) => {
                 let piece = self.squares[from.1 as usize][from.0 as usize];
                 self.squares[to.1 as usize][to.0 as usize] = piece;
                 self.squares[from.1 as usize][from.0 as usize] = Piece::EMPTY;
             }
-            Action::Capture(capture) => {
-                let from = capture.from;
-                let to = capture.to;
+            Action::Capture(Capture {
+                from,
+                to,
+                captured: _,
+            }) => {
                 let piece = self.squares[from.1 as usize][from.0 as usize];
                 self.squares[to.1 as usize][to.0 as usize] = piece;
                 self.squares[from.1 as usize][from.0 as usize] = Piece::EMPTY;
             }
-            Action::EnPassant(en_passant) => {
-                let from = en_passant.from;
-                let to = en_passant.to;
-                let captured = en_passant.captured;
+            Action::EnPassant(EnPassant { from, to, captured }) => {
                 let piece = self.squares[from.1 as usize][from.0 as usize];
                 self.squares[to.1 as usize][to.0 as usize] = piece;
                 self.squares[from.1 as usize][from.0 as usize] = Piece::EMPTY;
                 self.squares[captured.1 as usize][captured.0 as usize] = Piece::EMPTY;
             }
-            Action::Castle(castle) => {
-                let to = castle.to;
+            Action::Castle(Castle { to }) => {
                 let (king_from, rook_from, rook_to) = match to {
                     (2, 0) => ((4, 0), (0, 0), (3, 0)),
                     (6, 0) => ((4, 0), (7, 0), (5, 0)),
@@ -148,18 +144,17 @@ impl Board {
                 self.squares[rook_to.1 as usize][rook_to.0 as usize] = rook;
                 self.squares[rook_from.1 as usize][rook_from.0 as usize] = Piece::EMPTY;
             }
-            Action::Promotion(promotion) => {
-                let from = promotion.from;
-                let to = promotion.to;
-                let promoted = promotion.promoted;
-                self.squares[to.1 as usize][to.0 as usize] = promoted;
+            Action::Promotion(Promotion { from, to, promoted }) => {
+                self.squares[to.1 as usize][to.0 as usize] = *promoted;
                 self.squares[from.1 as usize][from.0 as usize] = Piece::EMPTY;
             }
-            Action::PromotionCapture(promotion_capture) => {
-                let from = promotion_capture.from;
-                let to = promotion_capture.to;
-                let promoted = promotion_capture.promoted;
-                self.squares[to.1 as usize][to.0 as usize] = promoted;
+            Action::PromotionCapture(PromotionCapture {
+                from,
+                to,
+                captured: _,
+                promoted,
+            }) => {
+                self.squares[to.1 as usize][to.0 as usize] = *promoted;
                 self.squares[from.1 as usize][from.0 as usize] = Piece::EMPTY;
             }
         }
@@ -167,25 +162,17 @@ impl Board {
 
     pub fn undo_action(&mut self, action: &Action) {
         match action {
-            Action::Move(move_) => {
-                let from = move_.from;
-                let to = move_.to;
+            Action::Move(Move { from, to }) => {
                 let piece = self.squares[to.1 as usize][to.0 as usize];
                 self.squares[from.1 as usize][from.0 as usize] = piece;
                 self.squares[to.1 as usize][to.0 as usize] = Piece::EMPTY;
             }
-            Action::Capture(capture) => {
-                let from = capture.from;
-                let to = capture.to;
-                let captured = capture.captured;
+            Action::Capture(Capture { from, to, captured }) => {
                 let piece = self.squares[to.1 as usize][to.0 as usize];
                 self.squares[from.1 as usize][from.0 as usize] = piece;
-                self.squares[to.1 as usize][to.0 as usize] = captured;
+                self.squares[to.1 as usize][to.0 as usize] = *captured;
             }
-            Action::EnPassant(en_passant) => {
-                let from = en_passant.from;
-                let to = en_passant.to;
-                let captured = en_passant.captured;
+            Action::EnPassant(EnPassant { from, to, captured }) => {
                 let piece = self.squares[to.1 as usize][to.0 as usize];
                 let captured_color = if piece.color() == Color::Black {
                     Color::White
@@ -197,8 +184,7 @@ impl Board {
                 self.squares[captured.1 as usize][captured.0 as usize] =
                     Piece::new(captured_color, Type::Pawn);
             }
-            Action::Castle(castle) => {
-                let to = castle.to;
+            Action::Castle(Castle { to }) => {
                 let (king_from, rook_from, rook_to) = match to {
                     (2, 0) => ((4, 0), (0, 0), (3, 0)),
                     (6, 0) => ((4, 0), (7, 0), (5, 0)),
@@ -213,21 +199,20 @@ impl Board {
                 self.squares[rook_from.1 as usize][rook_from.0 as usize] = rook;
                 self.squares[rook_to.1 as usize][rook_to.0 as usize] = Piece::EMPTY;
             }
-            Action::Promotion(promotion) => {
-                let from = promotion.from;
-                let to = promotion.to;
-                let promoted = promotion.promoted;
+            Action::Promotion(Promotion { from, to, promoted }) => {
                 let piece = self.squares[to.1 as usize][to.0 as usize];
                 self.squares[from.1 as usize][from.0 as usize] = piece;
-                self.squares[to.1 as usize][to.0 as usize] = promoted;
+                self.squares[to.1 as usize][to.0 as usize] = *promoted;
             }
-            Action::PromotionCapture(promition_capture) => {
-                let from = promition_capture.from;
-                let to = promition_capture.to;
-                let captured = promition_capture.captured;
+            Action::PromotionCapture(PromotionCapture {
+                from,
+                to,
+                promoted: _,
+                captured,
+            }) => {
                 let piece = self.squares[to.1 as usize][to.0 as usize];
                 self.squares[from.1 as usize][from.0 as usize] = piece;
-                self.squares[to.1 as usize][to.0 as usize] = captured;
+                self.squares[to.1 as usize][to.0 as usize] = *captured;
             }
         }
     }
@@ -244,8 +229,8 @@ impl Board {
         false
     }
 
-    pub fn get_legal_actions(&mut self) -> Vec<Action> {
-        let mut legal_moves = Vec::new();
+    pub fn get_possible_actions(&mut self) -> Vec<Action> {
+        let mut possible_actions = Vec::new();
         for y in 0..8 {
             for x in 0..8 {
                 let piece = self.squares[y][x];
@@ -268,7 +253,7 @@ impl Board {
                             y - 1
                         };
                         if self.squares[forw_1][x] == Piece::EMPTY {
-                            legal_moves.push(Action::Move(Move {
+                            possible_actions.push(Action::Move(Move {
                                 from: (x as u8, y as u8),
                                 to: (x as u8, forw_1 as u8),
                             }));
@@ -279,7 +264,7 @@ impl Board {
                                 y - 2
                             };
                             if !has_moved && self.squares[forw_2][x] == Piece::EMPTY {
-                                legal_moves.push(Action::Move(Move {
+                                possible_actions.push(Action::Move(Move {
                                     from: (x as u8, y as u8),
                                     to: (x as u8, forw_2 as u8),
                                 }));
@@ -288,9 +273,7 @@ impl Board {
                         // check diagonal capture + possible promotion
                         let add_diagonal_captures = |side: usize| {
                             let target = self.squares[forw_1][side];
-                            if target.color() != piece.color() {
-
-                            }
+                            if target.color() != piece.color() {}
                         };
                         if x != 0 {
                             add_diagonal_captures(x - 1);
@@ -320,14 +303,18 @@ impl Board {
                 }
             }
         }
+        possible_actions
+    }
+
+    pub fn get_legal_actions(&mut self) -> Vec<Action> {
         // filter out moves that would put the king in check
-        legal_moves
-            .retain(|action| {
-                self.apply_action(&action);
-                let is_check = self.is_check();
-                self.undo_action(&action);
-                !is_check
-            });
-        legal_moves
+        let mut legal_actions = self.get_possible_actions();
+        legal_actions.retain(|action| {
+            self.apply_action(&action);
+            let is_check = self.is_check();
+            self.undo_action(&action);
+            !is_check
+        });
+        legal_actions
     }
 }
