@@ -80,12 +80,20 @@ struct Promotion {
     promoted: Piece,
 }
 
+struct PromotionCapture {
+    from: (u8, u8),
+    to: (u8, u8),
+    captured: Piece,
+    promoted: Piece,
+}
+
 pub enum Action {
     Move(Move),
     Capture(Capture),
     EnPassant(EnPassant),
     Castle(Castle),
     Promotion(Promotion),
+    PromotionCapture(PromotionCapture),
 }
 
 pub struct Board {
@@ -144,6 +152,13 @@ impl Board {
                 let from = promotion.from;
                 let to = promotion.to;
                 let promoted = promotion.promoted;
+                self.squares[to.1 as usize][to.0 as usize] = promoted;
+                self.squares[from.1 as usize][from.0 as usize] = Piece::EMPTY;
+            }
+            Action::PromotionCapture(promotion_capture) => {
+                let from = promotion_capture.from;
+                let to = promotion_capture.to;
+                let promoted = promotion_capture.promoted;
                 self.squares[to.1 as usize][to.0 as usize] = promoted;
                 self.squares[from.1 as usize][from.0 as usize] = Piece::EMPTY;
             }
@@ -206,6 +221,14 @@ impl Board {
                 self.squares[from.1 as usize][from.0 as usize] = piece;
                 self.squares[to.1 as usize][to.0 as usize] = promoted;
             }
+            Action::PromotionCapture(promition_capture) => {
+                let from = promition_capture.from;
+                let to = promition_capture.to;
+                let captured = promition_capture.captured;
+                let piece = self.squares[to.1 as usize][to.0 as usize];
+                self.squares[from.1 as usize][from.0 as usize] = piece;
+                self.squares[to.1 as usize][to.0 as usize] = captured;
+            }
         }
     }
 
@@ -221,7 +244,7 @@ impl Board {
         false
     }
 
-    pub fn get_legal_actions(&self) -> Vec<Action> {
+    pub fn get_legal_actions(&mut self) -> Vec<Action> {
         let mut legal_moves = Vec::new();
         for y in 0..8 {
             for x in 0..8 {
@@ -230,9 +253,9 @@ impl Board {
                     continue;
                 }
 
-                fn add_diagonal_moves() {}
+                let add_diagonal_moves = || {};
 
-                fn add_horiz_vert_moves() {}
+                let add_horiz_vert_moves = || {};
 
                 match piece.type_() {
                     Type::Pawn => {
@@ -262,14 +285,25 @@ impl Board {
                                 }));
                             }
                         }
-                        // check diagonal capture
-                        // TODO: check for diagonal capture
+                        // check diagonal capture + possible promotion
+                        let add_diagonal_captures = |side: usize| {
+                            let target = self.squares[forw_1][side];
+                            if target.color() != piece.color() {
+
+                            }
+                        };
+                        if x != 0 {
+                            add_diagonal_captures(x - 1);
+                        }
+                        if x != 7 {
+                            add_diagonal_captures(x + 1);
+                        }
+
+                        // check for forward promotion
+                        // TODO: check for forward promotion
 
                         // check en passant
                         // TODO: check for en passant
-                        
-                        // check promotion
-                        // TODO: check for promotion
                     }
                     Type::Knight => {}
                     Type::Bishop => {
@@ -286,6 +320,14 @@ impl Board {
                 }
             }
         }
+        // filter out moves that would put the king in check
+        legal_moves
+            .retain(|action| {
+                self.apply_action(&action);
+                let is_check = self.is_check();
+                self.undo_action(&action);
+                !is_check
+            });
         legal_moves
     }
 }
