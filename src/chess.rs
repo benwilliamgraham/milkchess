@@ -67,7 +67,6 @@ struct Capture {
 struct EnPassant {
     from: (u8, u8),
     to: (u8, u8),
-    captured: (u8, u8),
 }
 
 struct Castle {
@@ -123,11 +122,11 @@ impl Board {
                 self.squares[to.1 as usize][to.0 as usize] = piece;
                 self.squares[from.1 as usize][from.0 as usize] = Piece::EMPTY;
             }
-            Action::EnPassant(EnPassant { from, to, captured }) => {
+            Action::EnPassant(EnPassant { from, to }) => {
                 let piece = self.squares[from.1 as usize][from.0 as usize];
                 self.squares[to.1 as usize][to.0 as usize] = piece;
                 self.squares[from.1 as usize][from.0 as usize] = Piece::EMPTY;
-                self.squares[captured.1 as usize][captured.0 as usize] = Piece::EMPTY;
+                self.squares[from.1 as usize][to.0 as usize] = Piece::EMPTY;
             }
             Action::Castle(Castle { to }) => {
                 let (king_from, rook_from, rook_to) = match to {
@@ -172,7 +171,7 @@ impl Board {
                 self.squares[from.1 as usize][from.0 as usize] = piece;
                 self.squares[to.1 as usize][to.0 as usize] = *captured;
             }
-            Action::EnPassant(EnPassant { from, to, captured }) => {
+            Action::EnPassant(EnPassant { from, to }) => {
                 let piece = self.squares[to.1 as usize][to.0 as usize];
                 let captured_color = if piece.color() == Color::Black {
                     Color::White
@@ -181,7 +180,7 @@ impl Board {
                 };
                 self.squares[from.1 as usize][from.0 as usize] = piece;
                 self.squares[to.1 as usize][to.0 as usize] = Piece::EMPTY;
-                self.squares[captured.1 as usize][captured.0 as usize] =
+                self.squares[from.1 as usize][to.0 as usize] =
                     Piece::new(captured_color, Type::Pawn);
             }
             Action::Castle(Castle { to }) => {
@@ -257,6 +256,18 @@ impl Board {
                                 from: (x as u8, y as u8),
                                 to: (x as u8, forw_1 as u8),
                             }));
+                            // check for promotion
+                            if forw_1 == 0 || forw_1 == 7 {
+                                for promotion_type in
+                                    [Type::Queen, Type::Rook, Type::Bishop, Type::Knight]
+                                {
+                                    possible_actions.push(Action::Promotion(Promotion {
+                                        from: (x as u8, y as u8),
+                                        to: (x as u8, forw_1 as u8),
+                                        promoted: Piece::new(piece.color(), promotion_type),
+                                    }));
+                                }
+                            }
                             // check two squares forward
                             let forw_2 = if piece.color() == Color::Black {
                                 y + 2
@@ -271,9 +282,33 @@ impl Board {
                             }
                         }
                         // check diagonal capture + possible promotion
-                        let add_diagonal_captures = |side: usize| {
+                        let mut add_diagonal_captures = |side: usize| {
                             let target = self.squares[forw_1][side];
-                            if target.color() != piece.color() {}
+                            if target != Piece::EMPTY && target.color() != piece.color() {
+                                // normal capture
+                                if y != 0 && y != 7 {
+                                    possible_actions.push(Action::Capture(Capture {
+                                        from: (x as u8, y as u8),
+                                        to: (side as u8, forw_1 as u8),
+                                        captured: target,
+                                    }));
+                                }
+                                // promotion capture
+                                else {
+                                    for promotion_type in
+                                        [Type::Queen, Type::Rook, Type::Bishop, Type::Knight]
+                                    {
+                                        possible_actions.push(Action::PromotionCapture(
+                                            PromotionCapture {
+                                                from: (x as u8, y as u8),
+                                                to: (side as u8, forw_1 as u8),
+                                                promoted: Piece::new(piece.color(), promotion_type),
+                                                captured: target,
+                                            },
+                                        ));
+                                    }
+                                }
+                            }
                         };
                         if x != 0 {
                             add_diagonal_captures(x - 1);
@@ -282,11 +317,24 @@ impl Board {
                             add_diagonal_captures(x + 1);
                         }
 
-                        // check for forward promotion
-                        // TODO: check for forward promotion
-
                         // check en passant
-                        // TODO: check for en passant
+                        if (piece.color() == Color::Black && y == 4)
+                            || (piece.color() == Color::White && y == 3)
+                        {
+                            match self.can_en_passant {
+                                Some(target_x) => {
+                                    if (x != 0 && target_x == x as u8 - 1)
+                                        || (target_x == x as u8 + 1)
+                                    {
+                                        possible_actions.push(Action::EnPassant(EnPassant {
+                                            from: (x as u8, y as u8),
+                                            to: (target_x as u8, forw_1 as u8),
+                                        }));
+                                    }
+                                }
+                                None => {}
+                            }
+                        }
                     }
                     Type::Knight => {}
                     Type::Bishop => {
