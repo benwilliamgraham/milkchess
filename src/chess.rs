@@ -58,6 +58,11 @@ struct Move {
     to: (u8, u8),
 }
 
+struct PawnDoubleMove {
+    from: (u8, u8),
+    prev_can_en_passant: Option<u8>
+}
+
 struct Capture {
     from: (u8, u8),
     to: (u8, u8),
@@ -76,18 +81,19 @@ struct Castle {
 struct Promotion {
     from: (u8, u8),
     to: (u8, u8),
-    promoted: Piece,
+    promoted_to: Piece,
 }
 
 struct PromotionCapture {
     from: (u8, u8),
     to: (u8, u8),
     captured: Piece,
-    promoted: Piece,
+    promoted_to: Piece,
 }
 
 pub enum Action {
     Move(Move),
+    PawnDoubleMove(PawnDoubleMove),
     Capture(Capture),
     EnPassant(EnPassant),
     Castle(Castle),
@@ -112,6 +118,19 @@ impl Board {
                 let piece = self.squares[from.1 as usize][from.0 as usize];
                 self.squares[to.1 as usize][to.0 as usize] = piece;
                 self.squares[from.1 as usize][from.0 as usize] = Piece::EMPTY;
+            }
+            Action::PawnDoubleMove(PawnDoubleMove {
+                from,
+                prev_can_en_passant: _,
+            }) => {
+                let piece = self.squares[from.1 as usize][from.0 as usize];
+                let target_y = match piece.color() {
+                    Color::Black => 3,
+                    Color::White => 4,
+                };
+                self.squares[target_y][from.0 as usize] = piece;
+                self.squares[from.1 as usize][from.0 as usize] = Piece::EMPTY;
+                self.can_en_passant = Some(from.0);
             }
             Action::Capture(Capture {
                 from,
@@ -143,7 +162,7 @@ impl Board {
                 self.squares[rook_to.1 as usize][rook_to.0 as usize] = rook;
                 self.squares[rook_from.1 as usize][rook_from.0 as usize] = Piece::EMPTY;
             }
-            Action::Promotion(Promotion { from, to, promoted }) => {
+            Action::Promotion(Promotion { from, to, promoted_to: promoted }) => {
                 self.squares[to.1 as usize][to.0 as usize] = *promoted;
                 self.squares[from.1 as usize][from.0 as usize] = Piece::EMPTY;
             }
@@ -151,7 +170,7 @@ impl Board {
                 from,
                 to,
                 captured: _,
-                promoted,
+                promoted_to: promoted,
             }) => {
                 self.squares[to.1 as usize][to.0 as usize] = *promoted;
                 self.squares[from.1 as usize][from.0 as usize] = Piece::EMPTY;
@@ -165,6 +184,16 @@ impl Board {
                 let piece = self.squares[to.1 as usize][to.0 as usize];
                 self.squares[from.1 as usize][from.0 as usize] = piece;
                 self.squares[to.1 as usize][to.0 as usize] = Piece::EMPTY;
+            }
+            Action::PawnDoubleMove(PawnDoubleMove { from, prev_can_en_passant: prev_status }) => {
+                let target_y = match self.squares[from.1 as usize][from.0 as usize].color() {
+                    Color::Black => 4,
+                    Color::White => 3,
+                };
+                let piece = self.squares[target_y][from.0 as usize];
+                self.squares[from.1 as usize][from.0 as usize] = piece;
+                self.squares[target_y][from.0 as usize] = Piece::EMPTY;
+                self.can_en_passant = *prev_status;
             }
             Action::Capture(Capture { from, to, captured }) => {
                 let piece = self.squares[to.1 as usize][to.0 as usize];
@@ -198,7 +227,7 @@ impl Board {
                 self.squares[rook_from.1 as usize][rook_from.0 as usize] = rook;
                 self.squares[rook_to.1 as usize][rook_to.0 as usize] = Piece::EMPTY;
             }
-            Action::Promotion(Promotion { from, to, promoted }) => {
+            Action::Promotion(Promotion { from, to, promoted_to: promoted }) => {
                 let piece = self.squares[to.1 as usize][to.0 as usize];
                 self.squares[from.1 as usize][from.0 as usize] = piece;
                 self.squares[to.1 as usize][to.0 as usize] = *promoted;
@@ -206,7 +235,7 @@ impl Board {
             Action::PromotionCapture(PromotionCapture {
                 from,
                 to,
-                promoted: _,
+                promoted_to: _,
                 captured,
             }) => {
                 let piece = self.squares[to.1 as usize][to.0 as usize];
@@ -264,7 +293,7 @@ impl Board {
                                     possible_actions.push(Action::Promotion(Promotion {
                                         from: (x as u8, y as u8),
                                         to: (x as u8, forw_1 as u8),
-                                        promoted: Piece::new(piece.color(), promotion_type),
+                                        promoted_to: Piece::new(piece.color(), promotion_type),
                                     }));
                                 }
                             }
@@ -302,7 +331,7 @@ impl Board {
                                             PromotionCapture {
                                                 from: (x as u8, y as u8),
                                                 to: (side as u8, forw_1 as u8),
-                                                promoted: Piece::new(piece.color(), promotion_type),
+                                                promoted_to: Piece::new(piece.color(), promotion_type),
                                                 captured: target,
                                             },
                                         ));
